@@ -3,6 +3,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,47 +54,33 @@ fun ChatScreen(viewModel: ChatViewModel) {
     var inputText by remember { mutableStateOf("") }
     val messages by viewModel.messages.collectAsState(initial = emptyList())
     
-    // --- NEU: Modell-Liste und State für das Dropdown-Menü ---
-    val availableModels = listOf(
-        "openrouter/auto" to "Auto (Kostenlos/Beste Wahl)",
-        "google/gemini-2.5-flash" to "Google Gemini 2.5 Flash",
-        "anthropic/claude-3-haiku" to "Claude 3 Haiku",
-        "meta-llama/llama-3-8b-instruct" to "Llama 3 (8B)",
-        "openai/gpt-3.5-turbo" to "GPT-3.5 Turbo"
-    )
-    var expanded by remember { mutableStateOf(false) }
-    var selectedModel by remember { mutableStateOf(availableModels[0]) }
+    // NEU: Beobachtet unsere dynamisch geladene Liste aus dem Internet
+    val availableModels by viewModel.modelList.collectAsState()
+    
+    var showDialog by remember { mutableStateOf(false) }
+    var selectedModel by remember { mutableStateOf("openrouter/auto" to "🌟 Auto (OpenRouter entscheidet)") }
+
+    // Falls das ausgewählte Modell noch nicht initialisiert ist (beim ersten Start)
+    LaunchedEffect(availableModels) {
+        if (availableModels.isNotEmpty() && selectedModel.first == "openrouter/auto" && selectedModel.second == "🌟 Auto (OpenRouter entscheidet)") {
+            selectedModel = availableModels[0]
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         
-        // --- NEU: Der Dropdown-Button ganz oben ---
-        Box(modifier = Modifier.fillMaxWidth().wrapContentSize(Alignment.TopStart)) {
-            OutlinedButton(
-                onClick = { expanded = true }, 
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("🧠 Modell: ${selectedModel.second}")
-            }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier.fillMaxWidth(0.9f)
-            ) {
-                availableModels.forEach { modelPair ->
-                    DropdownMenuItem(
-                        text = { Text(modelPair.second) },
-                        onClick = {
-                            selectedModel = modelPair
-                            expanded = false // Menü schließen nach Auswahl
-                        }
-                    )
-                }
-            }
+        // --- Modell-Auswahl Button ---
+        OutlinedButton(
+            onClick = { showDialog = true }, 
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            val buttonText = if (availableModels.isEmpty()) "Lade Modelle aus dem Internet..." else "🧠 Modell: ${selectedModel.second}"
+            Text(buttonText)
         }
         
         Spacer(modifier = Modifier.height(8.dp))
 
-        // --- Der bisherige Chat-Verlauf ---
+        // --- Der Chat-Verlauf ---
         LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
             items(messages) { message ->
                 val isUser = message.role == "user"
@@ -113,17 +101,58 @@ fun ChatScreen(viewModel: ChatViewModel) {
             }
         }
         
-        // --- Das Eingabefeld ---
+        // --- Eingabefeld ---
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(value = inputText, onValueChange = { inputText = it }, modifier = Modifier.weight(1f))
             Spacer(modifier = Modifier.width(8.dp))
             Button(onClick = { 
                 if (inputText.isNotBlank()) { 
-                    // NEU: Wir übergeben die ausgewählte Modell-ID (z.B. "google/gemini-2.5-flash") an das ViewModel
                     viewModel.sendMessage(inputText, selectedModel.first) 
                     inputText = "" 
                 } 
             }) { Text("Senden") }
+        }
+    }
+
+    // --- NEU: Ein großer, scrollbarer Dialog für hunderte von Modellen ---
+    if (showDialog) {
+        Dialog(onDismissRequest = { showDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier.fillMaxHeight(0.8f).fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("KI-Modell auswählen", style = MaterialTheme.typography.titleLarge)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    if (availableModels.isEmpty()) {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                    } else {
+                        LazyColumn(modifier = Modifier.weight(1f)) {
+                            items(availableModels) { modelPair ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            selectedModel = modelPair
+                                            showDialog = false
+                                        }
+                                        .padding(vertical = 12.dp)
+                                ) {
+                                    Text(text = modelPair.second, fontSize = 16.sp)
+                                }
+                                Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { showDialog = false },
+                        modifier = Modifier.align(Alignment.End)
+                    ) { Text("Schließen") }
+                }
+            }
         }
     }
 }
