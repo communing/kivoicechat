@@ -8,7 +8,6 @@ import java.util.concurrent.TimeUnit
 
 class ChatRepository(private val apiKeyManager: ApiKeyManager) {
     
-    // NEU: Wir erhöhen die Timeouts von 10 auf 90 Sekunden!
     private val client = OkHttpClient.Builder()
         .connectTimeout(90, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS)
@@ -24,16 +23,24 @@ class ChatRepository(private val apiKeyManager: ApiKeyManager) {
         .create(OpenRouterApi::class.java)
 
     suspend fun sendMessage(userText: String, requestedModel: String = "openrouter/auto"): Pair<String, String>? {
-        val apiKey = apiKeyManager.getApiKey() ?: return Pair("Fehler: Kein API-Key.", "system")
+        val apiKey = apiKeyManager.getApiKey() ?: return Pair("Fehler: Kein API-Key hinterlegt.", "system")
         return try {
             val response = api.getChatCompletion("Bearer $apiKey", request = ChatRequest(requestedModel, listOf(ApiMessage("user", userText))))
-            val body = response.body()
-            val text = body?.choices?.firstOrNull()?.message?.content
-            val actualModel = body?.model ?: requestedModel
-            if (response.isSuccessful && text != null) Pair(text, actualModel) else Pair("Fehler: Code ${response.code()}", "system")
+            
+            if (response.isSuccessful) {
+                val body = response.body()
+                // Wir navigieren sicher durch die Antwort (mit ?.)
+                val text = body?.choices?.firstOrNull()?.message?.content ?: "Kein Text in der Antwort gefunden."
+                val actualModel = body?.model ?: requestedModel
+                Pair(text, actualModel)
+            } else {
+                // Wenn OpenRouter z.B. Error 429 (Rate Limit) oder 402 (Guthaben leer) schickt
+                Pair("API Fehler Code ${response.code()}: ${response.errorBody()?.string()}", "system")
+            }
         } catch (e: Exception) { 
-            Log.e("ChatRepository", "Netzwerkfehler", e)
-            Pair("Netzwerk- oder Timeout-Fehler. Das Modell hat zu lange gebraucht oder das Internet ist weg.", "system") 
+            Log.e("ChatRepository", "System-Fehler", e)
+            // NEU: Gibt den exakten Java/Kotlin Fehlergrund im Chat aus!
+            Pair("System-Fehler: ${e.localizedMessage ?: e.javaClass.simpleName}", "system") 
         }
     }
 
