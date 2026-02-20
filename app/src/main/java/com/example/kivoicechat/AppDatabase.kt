@@ -5,7 +5,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import net.sqlcipher.database.SupportFactory
 
-@Database(entities = [ChatMessage::class], version = 1, exportSchema = false)
+// Version auf 2 erhöht, da sich die Struktur geändert hat
+@Database(entities = [ChatMessage::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
     companion object {
@@ -13,7 +14,9 @@ abstract class AppDatabase : RoomDatabase() {
         fun getDatabase(context: Context, dbPassword: ByteArray): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "encrypted_chat.db")
-                    .openHelperFactory(SupportFactory(dbPassword)).build()
+                    .openHelperFactory(SupportFactory(dbPassword))
+                    .fallbackToDestructiveMigration() // NEU: Baut die DB neu auf, falls sich die Version ändert (verhindert Abstürze)
+                    .build()
                 INSTANCE = instance
                 instance
             }

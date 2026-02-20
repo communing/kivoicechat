@@ -10,8 +10,16 @@ class ChatViewModel(private val repository: ChatRepository, private val chatDao:
     fun sendMessage(userText: String) {
         viewModelScope.launch {
             chatDao.insertMessage(ChatMessage(role = "user", content = userText))
-            val aiResponseText = repository.sendMessage(userText)
-            chatDao.insertMessage(ChatMessage(role = if (aiResponseText != null) "assistant" else "system", content = aiResponseText ?: "Fehler."))
+            
+            val result = repository.sendMessage(userText) // Nutzt jetzt openrouter/auto
+            
+            if (result != null) {
+                val (text, modelUsed) = result
+                // Speichert die KI-Antwort zusammen mit dem Namen des verwendeten Modells
+                chatDao.insertMessage(ChatMessage(role = "assistant", content = text, modelName = modelUsed))
+            } else {
+                chatDao.insertMessage(ChatMessage(role = "system", content = "Fehler beim Abrufen.", modelName = "system"))
+            }
         }
     }
 }
